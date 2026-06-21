@@ -1,0 +1,187 @@
+// PayNexus database schema
+// Every business-data table is scoped by companyId, so one database
+// safely serves many companies (multi-company support) and demo workspaces.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSED
+}
+
+model Company {
+  id          String    @id @default(uuid())
+  name        String
+  logoUrl     String?
+  primaryColor String   @default("#0B1F4D")
+  isDemo      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  users       User[]
+  clients     Client[]
+  templates   InvoiceTemplate[]
+  invoices    Invoice[]
+  departments Department[]
+  employees   Employee[]
+  payrollRuns PayrollRun[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+
+  invoices  Invoice[]
+
+  @@index([companyId])
+}
+
+model InvoiceTemplate {
+  id            String   @id @default(uuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name          String
+  primaryColor  String   @default("#0B1F4D")
+  accentColor   String   @default("#F8FAFC")
+  fontFamily    String   @default("Inter")
+  layout        String   @default("classic") // classic | modern | minimal
+  showLogo      Boolean  @default(true)
+  footerNote    String?  @default("Thank you for your business.")
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  invoices      Invoice[]
+
+  @@index([companyId])
+}
+
+model Invoice {
+  id            String          @id @default(uuid())
+  companyId     String
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoiceNumber String
+  clientId      String
+  client        Client          @relation(fields: [clientId], references: [id])
+  templateId    String?
+  template      InvoiceTemplate? @relation(fields: [templateId], references: [id])
+  issueDate     DateTime        @default(now())
+  dueDate       DateTime
+  status        InvoiceStatus   @default(DRAFT)
+  taxPercent    Float           @default(0)
+  notes         String?
+  shareToken    String          @unique @default(uuid())
+  createdAt     DateTime        @default(now())
+
+  items         InvoiceItem[]
+
+  @@index([companyId])
+  @@index([clientId])
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float   @default(1)
+  rate        Float   @default(0)
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  employees Employee[]
+
+  @@index([companyId])
+}
+
+model Employee {
+  id           String     @id @default(uuid())
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  name         String
+  email        String?
+  phone        String?
+  designation  String?
+  joinDate     DateTime   @default(now())
+  baseSalary   Float      @default(0)
+  bankAccount  String?
+  status       String     @default("active") // active | inactive
+  createdAt    DateTime   @default(now())
+
+  payrollItems PayrollItem[]
+
+  @@index([companyId])
+  @@index([departmentId])
+}
+
+model PayrollRun {
+  id          String        @id @default(uuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  month       Int
+  year        Int
+  status      PayrollStatus @default(DRAFT)
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+
+  items       PayrollItem[]
+
+  @@index([companyId])
+  @@unique([companyId, month, year])
+}
+
+model PayrollItem {
+  id            String     @id @default(uuid())
+  payrollRunId  String
+  payrollRun    PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employeeId    String
+  employee      Employee   @relation(fields: [employeeId], references: [id])
+  basic         Float      @default(0)
+  allowances    Float      @default(0)
+  deductions    Float      @default(0)
+  netSalary     Float      @default(0)
+
+  @@index([payrollRunId])
+  @@index([employeeId])
+}
